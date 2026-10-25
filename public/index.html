@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>pomonote</title><meta name="theme-color" content="#0d0c0a"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="pomonote"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="/icon-192.png"><meta name="description" content="Focus timer, tasks and notes. Local-first, no account.">
+<link rel="icon" href="/icon.svg"><link rel="manifest" href="/manifest.webmanifest"><link rel="stylesheet" href="/style.css"></head>
+<body>
+<header class="top"><a class="mark" href="#focus">pomonote<i>_</i></a>
+ <nav id="nav" aria-label="Main"><button data-v="focus"><span>01</span> Focus</button><button data-v="tasks"><span>02</span> Tasks</button><button data-v="notes"><span>03</span> Notes</button><button data-v="stats"><span>04</span> Stats</button></nav>
+ <button id="install" class="ghost" type="button" hidden>Install</button><button id="kbd" class="ghost" type="button" aria-label="Open command palette">Ctrl K</button></header>
+<main>
+<section id="v-focus"><p class="eyebrow">01 — Focus</p>
+ <div class="modes" id="modes" role="group" aria-label="Timer mode"><button data-m="focus">Focus</button><button data-m="short">Short break</button><button data-m="long">Long break</button></div>
+ <div id="clock" role="timer">25:00</div><div class="bar"><i id="bar"></i></div>
+ <input id="label" maxlength="80" placeholder="What are you working on?" aria-label="Session label">
+ <div class="row"><button id="go" class="primary" type="button">&gt; start_</button><button id="reset" type="button">Reset</button><button id="skip" type="button">Skip</button></div>
+ <p id="today" class="mut" aria-live="polite"></p>
+ <details><summary>Timer settings</summary><div class="grid">
+  <label>Focus (min)<input id="c-focus" type="number" min="1" max="180"></label><label>Short break<input id="c-short" type="number" min="1" max="180"></label>
+  <label>Long break<input id="c-long" type="number" min="1" max="180"></label><label>Long break every<input id="c-every" type="number" min="2" max="12"></label>
+  <label class="chk"><input id="c-auto" type="checkbox"> Auto-start next session</label><label class="chk"><input id="c-sound" type="checkbox"> Sound</label></div></details></section>
+<section id="v-tasks" hidden><p class="eyebrow">02 — Tasks</p>
+ <form id="add" autocomplete="off"><input id="q" placeholder="Review draft tomorrow #work !1 ~3" aria-label="New task"><button class="primary">Add</button></form>
+ <p class="mut small"><code>#list</code> <code>!1–3</code> priority <code>~3</code> estimated sessions <code>today</code> <code>tomorrow</code> <code>mon…sun</code></p>
+ <div class="tabs" id="tfilter" role="group" aria-label="Filter"><button data-f="today">Today</button><button data-f="upcoming">Next 7 days</button><button data-f="inbox">No date</button><button data-f="all">All</button><button data-f="done">Done</button></div>
+ <ul id="tlist" class="list"></ul></section>
+<section id="v-notes" hidden><p class="eyebrow">03 — Notes</p><div class="notes">
+ <aside><div class="row"><input id="ns" type="search" placeholder="Search notes" aria-label="Search notes"><button id="nn" type="button">+ New</button></div><ul id="ntree"></ul></aside>
+ <div id="ned" hidden><input id="nt" maxlength="200" placeholder="Untitled" aria-label="Title">
+  <div class="row"><button id="nsub" type="button">+ Sub-note</button><button id="npin" type="button">Pin</button><button id="nprev" type="button">Preview</button><button id="ndel" class="danger" type="button">Delete</button><span id="nstat" class="mut small"></span></div>
+  <textarea id="nb" placeholder="Markdown works. - [ ] makes a checklist." aria-label="Note"></textarea><div id="npv" hidden></div><div id="subbox"></div></div>
+ <p id="nempty" class="mut">Pick a note or press <b>+ New</b>.</p></div></section>
+<section id="v-stats" hidden><p class="eyebrow">04 — Stats</p><div id="cards" class="cards"></div>
+ <h2 class="small mut">Last 14 days (minutes focused)</h2><div id="chart" class="chart"></div><h2 class="small mut">By label</h2><ul id="labels" class="list"></ul></section>
+</main>
+<dialog id="pal"><input id="pi" placeholder="Type a command" aria-label="Command"><ul id="pl"></ul></dialog>
+<div id="toast" role="status" hidden></div>
+<script type="module" src="/app.js"></script></body></html>
