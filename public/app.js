@@ -1,4 +1,4 @@
-import { $, uid, day, addDays, fmt, esc, state as S, save, flush, parseTask, md } from "/lib.js";
+import { $, uid, day, addDays, fmt, esc, state as S, save, flush, parseTask, md } from "./lib.js";
 const T = S.timer, C = S.cfg, views = ["focus", "tasks", "notes", "stats"];
 let view = "focus";
 const toast = (m) => { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), 3500); };
@@ -170,4 +170,4 @@ $("#nav").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.d
 addEventListener("hashchange", () => go(location.hash.slice(1)));
 
 normalize(); navigator.storage?.persist?.(); applyTheme(); drawTimer(); go(location.hash.slice(1));
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
