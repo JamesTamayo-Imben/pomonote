@@ -13,3 +13,9 @@ Data lives in your browser (localStorage). Use **Export/Import** in the command 
 - **Install (no login, data stays on the device):** serve `public/` over HTTPS (localhost also works), then use the Install button, the browser menu, or "Add to Home Screen" on iOS. Works offline after the first load.
 
 Not in v2 (were in v1): Google sign-in, cross-device sync, share-by-link. They need a server data model; see the review notes.
+
+## Host on GitHub Pages
+1. Push this folder to a GitHub repo (branch `main`).
+2. Repo **Settings → Pages → Source: GitHub Actions**. The included workflow publishes `public/`.
+3. Open `https://<user>.github.io/<repo>/`. HTTPS is automatic, so the Install button works.
+Data is stored per web address: export before changing the URL or domain.
