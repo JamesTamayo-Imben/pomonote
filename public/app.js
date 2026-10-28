@@ -66,7 +66,8 @@ function finish() {
   if (Date.now() - T.endAt > 120000) { toast("Timer finished while you were away"); setMode("focus"); return; }
   beep();
   if (was === "focus") { S.sessions.push({ t: Date.now(), min: T.len / 60000, label: T.label.trim(), task: T.task });
-    const k = S.tasks.find((x) => x.id === T.task); if (k) k.spent = (k.spent || 0) + 1; }
+    const k = S.tasks.find((x) => x.id === T.task); if (k) k.spent = (k.spent || 0) + 1;
+    if (view === "stats") renderStats(); }
   notify(was === "focus" ? "Focus done. Take a break." : "Break over. Back to it.");
   setMode(was !== "focus" ? "focus" : todays().length % C.every === 0 ? "long" : "short", C.auto);
 }
