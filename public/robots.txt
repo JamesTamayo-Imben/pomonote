@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jamestamayo-imben.github.io/pomonote/sitemap.xml

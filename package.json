@@ -1,2 +1,4 @@
-{ "name": "pomonote", "version": "2.0.0", "type": "module", "private": true,
-  "scripts": { "start": "node server.js" }, "engines": { "node": ">=18" } }
+{ "name": "pomonote", "version": "2.0.0", "description": "Focus timer, tasks and notes. Local-first, no account.", "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/jamestamayo-imben/pomonote.git" },
+  "type": "module", "private": true,
+  "scripts": { "start": "node server.js", "test": "node --test" }, "engines": { "node": ">=18" } }

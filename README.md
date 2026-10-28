@@ -67,9 +67,12 @@ There is nothing to install: `server.js` is a zero-dependency static server. You
 | `#name` | List | `#work` |
 | `!1` `!2` `!3` | Priority (1 is highest) | `!1` |
 | `~N` | Estimated focus sessions | `~3` |
-| `today`, `tomorrow`, `mon` … `sun` | Due date | `friday` |
+| `today`, `tomorrow`, `mon` … `sun` | Due date; weekdays are upcoming dates | `friday` |
+| `next week` | Due next Monday | `next week` |
+| `in N days` | Due in N days | `in 3 days` |
 
 `Write report friday #work !2 ~4` creates "Write report", due next Friday, in the work list, priority 2, estimated at 4 sessions.
+Trailing punctuation after a token is allowed (for example, `#work,`); a weekday entered alone stays the task title.
 
 ## Keyboard shortcuts
 
