@@ -1,4 +1,5 @@
-import { $, uid, day, addDays, fmt, esc, state as S, save, flush, reloadState, parseTask, md, normalize as normalizeNotes, MAX_SUB } from "./lib.js";
+import { $, uid, day, addDays, fmt, esc, state as S, save, flush, ready, reloadState, parseTask, md, normalize as normalizeNotes, MAX_SUB, validateImport, lastBackup } from "./lib.js";
+await ready;
 const T = S.timer, C = S.cfg, views = ["focus", "tasks", "notes", "stats"];
 let view = "focus";
 const toast = (m, action) => {
@@ -9,18 +10,23 @@ const toast = (m, action) => {
 };
 document.addEventListener("pn:error", (e) => toast(e.detail));
 addEventListener("storage", (e) => {
-  if (e.key !== "pomonote.v2" || $("#nt").contains(document.activeElement) || $("#nb").contains(document.activeElement)) return;
-  reloadState(); normalizeNotes(S.notes); applyTheme();
-  $("#label").value = T.label;
-  for (const k of ["focus", "short", "long", "every"]) $("#c-" + k).value = C[k];
-  for (const k of ["auto", "sound"]) $("#c-" + k).checked = C[k];
-  if (view === "notes") {
-    const n = S.notes.find((x) => x.id === cur);
-    if (n) { $("#nt").value = n.title; $("#nb").value = n.body; if (prev) showPrev(); }
-    else cur = null;
-  }
-  drawTimer();
-  ({ tasks: renderTasks, notes: renderNotes, stats: renderStats })[view]?.();
+  if (e.key !== "pomonote.v2" && e.key !== "pomonote.v2.sync") return;
+  const editingNote = $("#nt").matches(":focus") || $("#nb").matches(":focus");
+  reloadState().then(() => {
+    normalizeNotes(S.notes); applyTheme();
+    $("#label").value = T.label;
+    for (const k of ["focus", "short", "long", "every"]) $("#c-" + k).value = C[k];
+    for (const k of ["auto", "sound"]) $("#c-" + k).checked = C[k];
+    const n = view === "notes" && S.notes.find((x) => x.id === cur);
+    if (view === "notes" && n && !editingNote) { $("#nt").value = n.title; $("#nb").value = n.body; if (prev) showPrev(); }
+    else if (view === "notes" && !n) cur = null;
+    drawTimer();
+    ({ tasks: renderTasks, notes: renderNotes, stats: renderStats })[view]?.();
+  }).catch((error) => toast(error.message));
+});
+document.addEventListener("pn:saved", () => {
+  const date = lastBackup ? new Date(lastBackup).toLocaleString() : "not yet";
+  $("#backup-status").textContent = `Last backup: ${date}`;
 });
 
 // ---------------------------------------------------------------- shell ---
@@ -58,7 +64,7 @@ function drawTimer() {
 function setMode(m, start = false) { T.mode = m; T.len = len(); T.left = T.len; T.running = start; T.endAt = start ? Date.now() + T.left : 0; save(); drawTimer(); }
 function toggle() {
   if (T.running) { T.left = T.endAt - Date.now(); T.running = false; }
-  else { try { ctx ||= new AudioContext(); if (Notification.permission === "default") Notification.requestPermission(); } catch {} T.len ||= T.left; T.endAt = Date.now() + T.left; T.running = true; }
+  else { try { ctx ||= new AudioContext(); if (Notification.permission === "default") Notification.requestPermission(); } catch {} if (!T.endAt) T.len = T.left; T.endAt = Date.now() + T.left; T.running = true; }
   save(); drawTimer();
 }
 function finish() {
@@ -78,6 +84,7 @@ $("#label").value = T.label; $("#label").oninput = (e) => { T.label = e.target.v
 for (const k of ["focus", "short", "long", "every"]) { const el = $("#c-" + k); el.value = C[k];
   el.onchange = () => { C[k] = Math.min(180, Math.max(1, +el.value || C[k])); el.value = C[k]; if (!T.running && k === T.mode) T.left = T.len = len(); save(); drawTimer(); }; }
 for (const k of ["auto", "sound"]) { const el = $("#c-" + k); el.checked = C[k]; el.onchange = () => { C[k] = el.checked; save(); }; }
+$("#backup-status").textContent = `Last backup: ${lastBackup ? new Date(lastBackup).toLocaleString() : "not yet"}`;
 
 // ---------------------------------------------------------------- tasks ---
 let tf = "today", fresh = null, editing = null;
@@ -169,18 +176,11 @@ function renderStats() {
 // ------------------------------------------------- data ownership + palette ---
 function exportData() { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: "application/json" })); a.download = `pomonote-${day()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 function importData() { const i = document.createElement("input"); i.type = "file"; i.accept = "application/json";
-  i.onchange = async () => { try { const d = JSON.parse(await i.files[0].text()); if (!d || !Array.isArray(d.tasks) || !Array.isArray(d.notes)) throw 0;
-    const validTask = (x) => x && typeof x.id === "string" && typeof x.title === "string"
-      && (x.due === null || typeof x.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.due))
-      && Number.isInteger(x.pri) && x.pri >= 0 && x.pri <= 3
-      && Number.isInteger(x.est) && x.est >= 0 && Number.isInteger(x.spent) && x.spent >= 0;
-    const validNote = (x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.body === "string";
-    const validSession = (x) => x && typeof x.t === "number" && typeof x.min === "number";
-    const tasks = d.tasks.filter(validTask), notes = d.notes.filter(validNote), sessions = Array.isArray(d.sessions) ? d.sessions.filter(validSession) : [];
-    const skipped = d.tasks.length - tasks.length + d.notes.length - notes.length + (Array.isArray(d.sessions) ? d.sessions.length - sessions.length : 0);
-    Object.assign(S, { tasks, notes, sessions }); normalizeNotes(S.notes); flush();
+  i.onchange = async () => { try { if (!i.files?.[0]) return; const d = JSON.parse(await i.files[0].text()), result = validateImport(d); if (!result) throw new Error("Invalid export.");
+    Object.assign(S, { tasks: result.tasks, notes: result.notes, sessions: result.sessions }); normalizeNotes(S.notes); await flush();
+    const { skipped } = result;
     if (skipped) { toast(`Import complete; skipped ${skipped} invalid item${skipped === 1 ? "" : "s"}.`); setTimeout(() => location.reload(), 3500); }
-    else location.reload(); } catch { toast("That file is not a pomonote export."); } }; i.click(); }
+    else location.reload(); } catch (error) { toast(error.message === "Invalid export." ? "That file is not a pomonote export." : `Import failed: ${error.message}`); } }; i.click(); }
 let deferred = null;
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; $("#install").hidden = false; });
 addEventListener("appinstalled", () => { deferred = null; $("#install").hidden = true; toast("Installed. Your data stays on this device."); });
