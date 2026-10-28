@@ -7,11 +7,11 @@ if (!S.onboarded) {
 }
 const T = S.timer, C = S.cfg, views = ["focus", "tasks", "notes", "stats"];
 let view = "focus";
-const toast = (m, action, actionLabel = "Undo") => {
+const toast = (m, action, actionLabel = "Undo", duration = action ? 5000 : 3500) => {
   const t = $("#toast"); t.replaceChildren(document.createTextNode(m));
   if (action) { const b = document.createElement("button"); b.type = "button"; b.className = "toast-action"; b.textContent = actionLabel;
     b.onclick = () => { clearTimeout(toast.h); t.hidden = true; action(); }; t.append(" ", b); }
-  t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), action ? 5000 : 3500);
+  t.hidden = false; clearTimeout(toast.h); if (duration) toast.h = setTimeout(() => (t.hidden = true), duration);
 };
 document.addEventListener("pn:error", (e) => toast(e.detail));
 addEventListener("storage", (e) => {
@@ -266,4 +266,23 @@ addEventListener("keydown", (e) => {
 addEventListener("hashchange", () => go(location.hash.slice(1)));
 
 normalizeNotes(S.notes); navigator.storage?.persist?.(); applyTheme(); drawTimer(); go(location.hash.slice(1));
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  let reloading = false, prompted = false, reloadForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!reloadForUpdate || reloading) return;
+    reloading = true; location.reload();
+  });
+  navigator.serviceWorker.register("./sw.js").then((registration) => {
+    const offerUpdate = () => {
+      if (!registration.waiting || !navigator.serviceWorker.controller || prompted) return;
+      prompted = true;
+      const waiting = registration.waiting;
+      toast("Update available, reload", () => { reloadForUpdate = true; waiting.postMessage({ type: "SKIP_WAITING" }); }, "Reload", 0);
+    };
+    offerUpdate();
+    registration.addEventListener("updatefound", () => {
+      const worker = registration.installing;
+      worker?.addEventListener("statechange", () => { if (worker.state === "installed") offerUpdate(); });
+    });
+  }).catch((error) => toast(`Offline support could not start: ${error.message}`));
+}
