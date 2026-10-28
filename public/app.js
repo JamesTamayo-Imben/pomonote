@@ -1,10 +1,15 @@
 import { $, uid, day, addDays, fmt, esc, state as S, save, flush, ready, reloadState, parseTask, md, normalize as normalizeNotes, MAX_SUB, validateImport, lastBackup } from "./lib.js";
 await ready;
+if (!S.onboarded) {
+  S.tasks.push({ id: uid(), title: "Plan your first focus session", due: day(), list: "Inbox", pri: 0, est: 1, spent: 0, done: 0, created: Date.now() });
+  S.notes.push({ id: uid(), parent: null, title: "Welcome to pomonote", body: "Use the timer to focus, add tasks with `#list` and `!priority`, and write notes here.", pinned: false, updated: Date.now() });
+  S.onboarded = true; save();
+}
 const T = S.timer, C = S.cfg, views = ["focus", "tasks", "notes", "stats"];
 let view = "focus";
-const toast = (m, action) => {
+const toast = (m, action, actionLabel = "Undo") => {
   const t = $("#toast"); t.replaceChildren(document.createTextNode(m));
-  if (action) { const b = document.createElement("button"); b.type = "button"; b.className = "toast-action"; b.textContent = "Undo";
+  if (action) { const b = document.createElement("button"); b.type = "button"; b.className = "toast-action"; b.textContent = actionLabel;
     b.onclick = () => { clearTimeout(toast.h); t.hidden = true; action(); }; t.append(" ", b); }
   t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => (t.hidden = true), action ? 5000 : 3500);
 };
@@ -17,6 +22,7 @@ addEventListener("storage", (e) => {
     $("#label").value = T.label;
     for (const k of ["focus", "short", "long", "every"]) $("#c-" + k).value = C[k];
     for (const k of ["auto", "sound"]) $("#c-" + k).checked = C[k];
+    $("#theme-choice").value = C.theme;
     const n = view === "notes" && S.notes.find((x) => x.id === cur);
     if (view === "notes" && n && !editingNote) { $("#nt").value = n.title; $("#nb").value = n.body; if (prev) showPrev(); }
     else if (view === "notes" && !n) cur = null;
@@ -27,13 +33,14 @@ addEventListener("storage", (e) => {
 document.addEventListener("pn:saved", () => {
   const date = lastBackup ? new Date(lastBackup).toLocaleString() : "not yet";
   $("#backup-status").textContent = `Last backup: ${date}`;
+  $("#settings-backup").textContent = `Last backup: ${date}`;
 });
 
 // ---------------------------------------------------------------- shell ---
 function go(v) {
   view = views.includes(v) ? v : "focus";
   for (const x of views) $("#v-" + x).hidden = x !== view;
-  document.querySelectorAll("#nav button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === view)));
+  document.querySelectorAll("#nav button, #bottom-nav [data-v]").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === view)));
   if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view);
   ({ tasks: renderTasks, notes: renderNotes, stats: renderStats })[view]?.();
 }
@@ -42,8 +49,10 @@ const applyTheme = () => {
   const light = C.theme === "auto" ? themePreference.matches : C.theme === "light";
   document.documentElement.dataset.theme = light ? "light" : "dark";
   $('meta[name="theme-color"]').content = light ? "#f6f3ec" : "#0d0c0a";
+  $("#theme-choice").value = C.theme;
 };
 const toggleTheme = () => { C.theme = C.theme === "dark" ? "light" : C.theme === "light" ? "auto" : "dark"; applyTheme(); save(); };
+$("#theme-choice").onchange = () => { C.theme = $("#theme-choice").value; applyTheme(); save(); };
 themePreference.addEventListener("change", () => { if (C.theme === "auto") applyTheme(); });
 
 // ---------------------------------------------------------------- timer ---
@@ -69,7 +78,8 @@ function toggle() {
 }
 function finish() {
   const was = T.mode;
-  if (Date.now() - T.endAt > 120000) { toast("Timer finished while you were away"); setMode("focus"); return; }
+  if (Date.now() - T.endAt > 120000) { toast("Timer finished while you were away"); $("#announcement").textContent = "Timer finished while you were away."; setMode("focus"); return; }
+  $("#announcement").textContent = was === "focus" ? "Focus session complete." : "Break complete.";
   beep();
   if (was === "focus") { S.sessions.push({ t: Date.now(), min: T.len / 60000, label: T.label.trim(), task: T.task });
     const k = S.tasks.find((x) => x.id === T.task); if (k) k.spent = (k.spent || 0) + 1;
@@ -85,6 +95,7 @@ for (const k of ["focus", "short", "long", "every"]) { const el = $("#c-" + k); 
   el.onchange = () => { C[k] = Math.min(180, Math.max(1, +el.value || C[k])); el.value = C[k]; if (!T.running && k === T.mode) T.left = T.len = len(); save(); drawTimer(); }; }
 for (const k of ["auto", "sound"]) { const el = $("#c-" + k); el.checked = C[k]; el.onchange = () => { C[k] = el.checked; save(); }; }
 $("#backup-status").textContent = `Last backup: ${lastBackup ? new Date(lastBackup).toLocaleString() : "not yet"}`;
+$("#settings-backup").textContent = $("#backup-status").textContent;
 
 // ---------------------------------------------------------------- tasks ---
 let tf = "today", fresh = null, editing = null;
@@ -96,17 +107,34 @@ function renderTasks() {
     .sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || (a.pri || 4) - (b.pri || 4));
   $("#tlist").innerHTML = rows.map((x) => `<li class="task${x.done ? " done" : ""}${x.id === fresh ? " enter" : ""}" data-id="${esc(x.id)}"><input type="checkbox" ${x.done ? "checked" : ""} aria-label="Complete task: ${esc(x.title)}">
     ${x.id === editing ? `<input class="edit-title" value="${esc(x.title)}" aria-label="Rename task: ${esc(x.title)}">` : `<span class="tt" title="Tap to rename">${esc(x.title)}</span>`}<span class="meta">${x.pri ? `<b class="p${esc(x.pri)}">P${esc(x.pri)}</b>` : ""}${x.due ? `<span class="${x.due < t && !x.done ? "late" : ""}">${esc(rel(x.due))}</span>` : ""}<span>#${esc(x.list)}</span>${x.est ? `<span>${esc(x.spent || 0)}/${esc(x.est)}</span>` : ""}</span>
-    <button class="fb" aria-label="Focus on task: ${esc(x.title)}">▶</button><button class="del" aria-label="Delete task: ${esc(x.title)}">×</button></li>`).join("")
+  <button class="task-details" aria-label="Edit details for ${esc(x.title)}">⋯</button><button class="fb" aria-label="Focus on task: ${esc(x.title)}">▶</button><button class="del" aria-label="Delete task: ${esc(x.title)}">×</button></li>`).join("")
     || `<li class="mut pad">Nothing here. Try “Review draft tomorrow !1 ~2”.</li>`;
   fresh = null;
 }
 const taskOf = (e) => S.tasks.find((k) => k.id === e.target.closest("li[data-id]")?.dataset.id);
+function editTaskDetails(task) {
+  $("#task-dialog-title").textContent = `Task details: ${task.title}`;
+  $("#detail-due").value = task.due || "";
+  $("#detail-pri").value = String(task.pri || 0);
+  $("#detail-list").value = task.list || "Inbox";
+  $("#detail-est").value = String(task.est || 0);
+  $("#task-dialog").showModal();
+  $("#task-details").onsubmit = (e) => {
+    e.preventDefault();
+    task.due = $("#detail-due").value || null;
+    task.pri = +$("#detail-pri").value;
+    task.list = $("#detail-list").value.trim() || "Inbox";
+    task.est = Math.max(0, Math.min(20, Math.trunc(+$("#detail-est").value || 0)));
+    save(); $("#task-dialog").close(); renderTasks();
+  };
+}
 $("#tfilter").onclick = (e) => { if (e.target.dataset.f) { tf = e.target.dataset.f; renderTasks(); } };
 $("#tlist").onclick = (e) => { const x = taskOf(e), li = e.target.closest("li"); if (!x) return;
   if (e.target.closest(".tt")) { editing = x.id; renderTasks(); const input = $("#tlist .edit-title"); input.focus(); input.select(); }
   else if (e.target.matches('input[type="checkbox"]')) { x.done = e.target.checked ? Date.now() : 0; save(); li.classList.toggle("done", !!x.done); if (tf !== "all") li.classList.add("leave"); setTimeout(renderTasks, 260); }
   else if (e.target.closest(".del")) { const index = S.tasks.indexOf(x); S.tasks.splice(index, 1); save(); li.classList.add("leave"); setTimeout(renderTasks, 260);
     toast("Task deleted", () => { S.tasks.splice(Math.min(index, S.tasks.length), 0, x); save(); renderTasks(); }); }
+  else if (e.target.closest(".task-details")) editTaskDetails(x);
   else if (e.target.closest(".fb")) { T.task = x.id; T.label = x.title; $("#label").value = x.title; save(); go("focus"); } };
 $("#tlist").onkeydown = (e) => { if (!e.target.matches(".edit-title")) return;
   const x = taskOf(e); if (e.key === "Enter") { e.preventDefault(); if (x) x.title = e.target.value.trim().slice(0, 200) || x.title; editing = null; save(); renderTasks(); }
@@ -143,8 +171,22 @@ function newNote(parent = null) {
   if (parent) { if (byId(parent).parent) return toast("Sub-notes can't have sub-notes."); if (kids(parent).length >= MAX_SUB) return toast(`Limit reached: ${MAX_SUB} sub-notes per note.`); openSet.add(parent); }
   const n = { id: uid(), parent, title: "", body: "", pinned: false, updated: Date.now() }; S.notes.push(n); save(); openNote(n.id); $("#nt").focus();
 }
-const edit = () => { const n = note(); if (!n) return; n.title = $("#nt").value; n.body = $("#nb").value; n.updated = Date.now(); save(); $("#nstat").textContent = `${words(n)} words · saved`; renderNotes(); };
+const edit = () => {
+  const n = note(); if (!n) return;
+  const titleChanged = n.title !== $("#nt").value;
+  n.title = $("#nt").value; n.body = $("#nb").value; n.updated = Date.now(); save();
+  $("#nstat").textContent = `${words(n)} words · saved`;
+  if (titleChanged) renderNotes();
+};
 $("#nt").oninput = edit; $("#nb").oninput = edit; $("#ns").oninput = renderNotes;
+$("#npv").onclick = (e) => {
+  const box = e.target.closest("input[data-check]"); if (!box) return;
+  const lines = $("#nb").value.split("\n");
+  const checks = lines.flatMap((line, index) => /^\s*(?:[-*]|\d+[.)])\s+\[[ xX]\]/.test(line) ? [index] : []);
+  const line = checks[+box.dataset.check]; if (line === undefined) return;
+  lines[line] = lines[line].replace(/\[([ xX])\]/, box.checked ? "[x]" : "[ ]");
+  $("#nb").value = lines.join("\n"); edit(); showPrev();
+};
 $("#ntree").onclick = (e) => { const t = e.target.closest("[data-t]");
   if (t) { const o = !openSet.has(t.dataset.t); o ? openSet.add(t.dataset.t) : openSet.delete(t.dataset.t); t.setAttribute("aria-expanded", o); t.closest("li").querySelector(".subs")?.classList.toggle("open", o); return; }
   const b = e.target.closest("[data-id]"); if (b) openNote(b.dataset.id); };
@@ -168,7 +210,7 @@ function renderStats() {
   $("#cards").innerHTML = card("Today", (by[t] || 0) + " min") + card("Last 7 days", days.slice(7).reduce((a, d) => a + (by[d] || 0), 0) + " min")
     + card("Streak", `${streak} day${streak === 1 ? "" : "s"}`) + card("Tasks done", S.tasks.filter((x) => x.done).length);
   $("#chart").innerHTML = days.map((d, i) => `<div class="col" title="${esc(d)}: ${esc(by[d] || 0)} min"><i style="--i:${esc(i)};height:${esc(((by[d] || 0) / max) * 100)}%"></i><span>${esc(d.slice(8))}</span></div>`).join("");
-  $("#chart-data").innerHTML = days.map((d) => `<li>${esc(new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}: ${esc(by[d] || 0)} minutes</li>`).join("");
+  $("#chart-data tbody").innerHTML = days.map((d) => `<tr><th scope="row">${esc(new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }))}</th><td>${esc(by[d] || 0)} minutes</td></tr>`).join("");
   $("#labels").innerHTML = Object.entries(lb).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `<li class="row2"><span>${esc(k)}</span><b>${esc(v)} min</b></li>`).join("")
     || `<li class="mut pad">Finish a focus session to see where your time goes.</li>`;
 }
@@ -181,6 +223,17 @@ function importData() { const i = document.createElement("input"); i.type = "fil
     const { skipped } = result;
     if (skipped) { toast(`Import complete; skipped ${skipped} invalid item${skipped === 1 ? "" : "s"}.`); setTimeout(() => location.reload(), 3500); }
     else location.reload(); } catch (error) { toast(error.message === "Invalid export." ? "That file is not a pomonote export." : `Import failed: ${error.message}`); } }; i.click(); }
+function openSettings() {
+  $("#theme-choice").value = C.theme;
+  $("#settings-backup").textContent = `Last backup: ${lastBackup ? new Date(lastBackup).toLocaleString() : "not yet"}`;
+  $("#settings-dialog").showModal();
+}
+$("#settings-open").onclick = openSettings;
+$("#mobile-settings").onclick = openSettings;
+$("#settings-export").onclick = () => { $("#settings-dialog").close(); exportData(); };
+$("#settings-import").onclick = () => { $("#settings-dialog").close(); importData(); };
+$("#task-cancel").onclick = () => $("#task-dialog").close();
+const openHelp = () => $("#help-dialog").showModal();
 let deferred = null;
 addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); deferred = e; $("#install").hidden = false; });
 addEventListener("appinstalled", () => { deferred = null; $("#install").hidden = true; toast("Installed. Your data stays on this device."); });
@@ -188,7 +241,8 @@ async function install() { if (!deferred) return toast("Use your browser menu: I
 $("#install").onclick = install;
 const cmds = () => [["Go to Focus", () => go("focus")], ["Go to Tasks", () => go("tasks")], ["Go to Notes", () => go("notes")], ["Go to Stats", () => go("stats")],
   [T.running ? "Pause timer" : "Start timer", toggle], ["New task", () => { go("tasks"); $("#q").focus(); }], ["New note", () => { go("notes"); newNote(); }],
-  ["Toggle dark / light / auto", toggleTheme], ["Install app", install], ["Export data (JSON)", exportData], ["Import data (JSON)", importData]];
+  ["Settings", openSettings], ["Keyboard shortcuts", openHelp], ["Toggle dark / light / auto", toggleTheme], ["Install app", install],
+  ["Export data (JSON)", exportData], ["Import data (JSON)", importData]];
 let sel = 0, shown = [];
 function drawPal() { const q = $("#pi").value.toLowerCase(); shown = cmds().filter(([n]) => n.toLowerCase().includes(q)); sel = Math.min(sel, Math.max(0, shown.length - 1));
   $("#pl").innerHTML = shown.map(([n], i) => `<li role="option" aria-selected="${i === sel}">${esc(n)}</li>`).join(""); }
@@ -199,14 +253,16 @@ $("#pi").onkeydown = (e) => { if (e.key === "ArrowDown" || e.key === "ArrowUp") 
 $("#pl").onclick = (e) => run([...$("#pl").children].indexOf(e.target.closest("li")));
 $("#pal").onclick = (e) => e.target === $("#pal") && $("#pal").close();
 $("#kbd").onclick = openPal;
+$("#nav").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.v); };
+$("#bottom-nav").onclick = (e) => { const b = e.target.closest("button"); if (b?.dataset.v) go(b.dataset.v); };
 addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
   if (mod && k === "k") { e.preventDefault(); return openPal(); }
   if (mod && k === "e" && view === "notes") { e.preventDefault(); prev = !prev; return showPrev(); }
   if (mod || e.altKey || e.target.closest("input,textarea,button,summary,dialog")) return;
-  if (e.code === "Space" && view === "focus") { e.preventDefault(); toggle(); } else if (/^[1-4]$/.test(e.key)) go(views[+e.key - 1]);
+  if (e.key === "?") openHelp();
+  else if (e.code === "Space" && view === "focus") { e.preventDefault(); toggle(); } else if (/^[1-4]$/.test(e.key)) go(views[+e.key - 1]);
 });
-$("#nav").onclick = (e) => { const b = e.target.closest("button"); if (b) go(b.dataset.v); };
 addEventListener("hashchange", () => go(location.hash.slice(1)));
 
 normalizeNotes(S.notes); navigator.storage?.persist?.(); applyTheme(); drawTimer(); go(location.hash.slice(1));

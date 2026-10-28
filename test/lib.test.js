@@ -33,6 +33,11 @@ test("md escapes HTML and does not create javascript links", () => {
   assert.match(link, /javascript:/);
 });
 
+test("md renders ordered and nested lists with interactive checklist markers", () => {
+  const html = md("1. One\n  - [ ] Subtask\n  - [x] Done\n2. Two");
+  assert.match(html, /^<ol><li>One<ul><li><input[^>]*data-check="0"[^>]*> Subtask<\/li><li><input[^>]*data-check="1"[^>]*checked> Done<\/li><\/ul><\/li><li>Two<\/li><\/ol>$/);
+});
+
 test("normalize prevents nested sub-notes and repairs missing parents", () => {
   const notes = [
     { id: "root", parent: null },

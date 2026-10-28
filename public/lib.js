@@ -9,14 +9,16 @@ export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
 // ---- store: one JSON blob in localStorage, debounced writes, flushed on page hide
 const KEY = "pomonote.v2";
 const VERSION = 1, BACKUPS = KEY + ".backups", SYNC = KEY + ".sync", CORRUPT = KEY + ".corrupt";
-const DEF = { version: VERSION, tasks: [], notes: [], sessions: [],
+const DEF = { version: VERSION, onboarded: false, tasks: [], notes: [], sessions: [],
   cfg: { focus: 25, short: 5, long: 15, every: 4, auto: false, sound: true, theme: "auto" },
   timer: { mode: "focus", running: false, endAt: 0, left: 25 * 60000, len: 25 * 60000, label: "", task: null } };
 const clone = (x) => structuredClone(x);
 export function migrate(data) {
   const saved = data && typeof data === "object" && !Array.isArray(data) ? data : {};
+  const hasExistingData = ["tasks", "notes", "sessions"].some((key) => Array.isArray(saved[key]) && saved[key].length > 0);
   return {
     ...DEF, ...saved, version: VERSION,
+    onboarded: saved.onboarded ?? hasExistingData,
     tasks: Array.isArray(saved.tasks) ? saved.tasks : [],
     notes: Array.isArray(saved.notes) ? saved.notes : [],
     sessions: Array.isArray(saved.sessions) ? saved.sessions : [],
@@ -106,6 +108,8 @@ export const ready = (async () => {
     }
   }
   assignState(state, migrate(await parseSaved(raw)));
+  try { if (localGet("pomonote.theme") === null) localSet("pomonote.theme", state.cfg.theme); }
+  catch { setTimeout(() => report("pn:error", "Theme preference will sync after startup."), 0); }
   const backups = await getRaw(BACKUPS);
   if (backups) {
     try { const saved = JSON.parse(backups); if (Array.isArray(saved)) { lastBackup = saved[0]?.at || null; snapshotTime = Date.parse(lastBackup) || 0; } }
@@ -133,6 +137,7 @@ export async function flush() {
   await ready;
   const raw = JSON.stringify(migrate(state));
   await setRaw(KEY, raw);
+  try { localStorage.setItem("pomonote.theme", state.cfg.theme); } catch {}
   const now = Date.now();
   if (!snapshotTime || now - snapshotTime >= 60 * 60 * 1000) {
     const history = await getRaw(BACKUPS);
@@ -177,21 +182,38 @@ export function parseTask(raw) {
 const inline = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
   .replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>").replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 export function md(src) {
-  const out = []; let code = null, list = false;
-  const close = () => { if (list) { out.push("</ul>"); list = false; } };
+  const out = []; let code = null, lists = [], checklist = 0;
+  const closeLists = () => {
+    while (lists.length) {
+      const type = lists.pop();
+      out.push(`</li></${type}>`);
+    }
+  };
   for (const l of src.split("\n")) {
-    if (l.startsWith("```")) { if (code === null) { close(); code = []; } else { out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); code = null; } continue; }
+    if (l.startsWith("```")) { if (code === null) { closeLists(); code = []; } else { out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`); code = null; } continue; }
     if (code) { code.push(l); continue; }
     let m;
-    if ((m = l.match(/^(#{1,3}) (.*)/))) { close(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
-    else if ((m = l.match(/^[-*] (\[[ xX]\] )?(.*)/))) { if (!list) { out.push("<ul>"); list = true; }
-      out.push(`<li>${m[1] ? `<input type="checkbox" disabled${/x/i.test(m[1]) ? " checked" : ""}> ` : ""}${inline(m[2])}</li>`); }
-    else if (/^---+$/.test(l)) { close(); out.push("<hr>"); }
-    else if ((m = l.match(/^> ?(.*)/))) { close(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); }
-    else if (l.trim()) { close(); out.push(`<p>${inline(l)}</p>`); } else close();
+    if ((m = l.match(/^(\s*)([-*]|\d+[.)])\s+(.*)$/))) {
+      const depth = Math.min(Math.floor(m[1].length / 2), lists.length), type = /^\d/.test(m[2]) ? "ol" : "ul";
+      while (lists.length > depth + 1) {
+        const closed = lists.pop();
+        out.push(`</li></${closed}>`);
+      }
+      if (lists.length === depth + 1) {
+        if (lists[depth] === type) out.push("</li><li>");
+        else { out.push(`</li></${lists[depth]}><${type}><li>`); lists[depth] = type; }
+      } else { out.push(`<${type}><li>`); lists.push(type); }
+      const check = m[3].match(/^\[([ xX])\]\s+(.*)$/);
+      if (check) out.push(`<input type="checkbox" data-check="${checklist++}" aria-label="Toggle checklist item"${/x/i.test(check[1]) ? " checked" : ""}> ${inline(check[2])}`);
+      else out.push(inline(m[3]));
+    }
+    else if ((m = l.match(/^(#{1,3}) (.*)/))) { closeLists(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
+    else if (/^---+$/.test(l)) { closeLists(); out.push("<hr>"); }
+    else if ((m = l.match(/^> ?(.*)/))) { closeLists(); out.push(`<blockquote>${inline(m[1])}</blockquote>`); }
+    else if (l.trim()) { closeLists(); out.push(`<p>${inline(l)}</p>`); } else closeLists();
   }
   if (code) out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
-  close(); return out.join("");
+  closeLists(); return out.join("");
 }
 
 export const MAX_SUB = 10;

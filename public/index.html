@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>pomonote</title><link rel="canonical" href="https://jamestamayo-imben.github.io/pomonote/"><meta property="og:title" content="pomonote — Focus timer, tasks and notes"><meta property="og:description" content="Focus timer, tasks and notes. Local-first, no account."><meta property="og:image" content="https://jamestamayo-imben.github.io/pomonote/icon-512.png"><meta name="twitter:card" content="summary_large_image"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-3y75EfnaKvv/pCwHV2Y5V7oy1IrK3s8M9c47V4tT93M='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"><meta name="theme-color" content="#0d0c0a"><script>
+<title>pomonote</title><link rel="canonical" href="https://jamestamayo-imben.github.io/pomonote/"><meta property="og:title" content="pomonote — Focus timer, tasks and notes"><meta property="og:description" content="Focus timer, tasks and notes. Local-first, no account."><meta property="og:image" content="https://jamestamayo-imben.github.io/pomonote/icon-512.png"><meta name="twitter:card" content="summary_large_image"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-qhJFDkasSF/uRkIMy/NRzzhFZSd4fmMlPKvoNQt1hMc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'"><meta name="theme-color" content="#0d0c0a"><script>
 try {
   const saved = JSON.parse(localStorage.getItem("pomonote.v2"));
   const theme = saved?.cfg?.theme;
-  const light = theme === "light" || (theme !== "dark" && matchMedia("(prefers-color-scheme: light)").matches);
+  const storedTheme = localStorage.getItem("pomonote.theme") || theme;
+  const light = storedTheme === "light" || (storedTheme !== "dark" && matchMedia("(prefers-color-scheme: light)").matches);
   document.documentElement.dataset.theme = light ? "light" : "dark";
   document.querySelector('meta[name="theme-color"]').content = light ? "#f6f3ec" : "#0d0c0a";
 } catch {
@@ -17,12 +18,12 @@ try {
 <body>
 <header class="top"><a class="mark" href="#focus">pomonote<i>_</i></a>
  <nav id="nav" aria-label="Main"><button data-v="focus"><span>01</span> Focus</button><button data-v="tasks"><span>02</span> Tasks</button><button data-v="notes"><span>03</span> Notes</button><button data-v="stats"><span>04</span> Stats</button></nav>
- <button id="install" class="ghost" type="button" hidden>Install</button><button id="kbd" class="ghost" type="button" aria-label="Open command palette">Ctrl K</button></header>
+ <button id="install" class="ghost" type="button" hidden>Install</button><button id="settings-open" class="ghost" type="button">Settings</button><button id="kbd" class="ghost" type="button" aria-label="Open command palette">Ctrl K</button></header>
 <noscript><p class="mut" style="padding:16px">pomonote needs JavaScript to run. Enable JavaScript to use the focus timer, tasks, and notes.</p></noscript>
 <main><h1 class="sr-only">pomonote — focus timer, tasks and notes</h1>
 <section id="v-focus"><p class="eyebrow">01 — Focus</p>
  <div class="modes" id="modes" role="group" aria-label="Timer mode"><button data-m="focus">Focus</button><button data-m="short">Short break</button><button data-m="long">Long break</button></div>
- <div id="clock" role="timer">25:00</div><div class="bar"><i id="bar"></i></div>
+ <div id="clock" role="timer">25:00</div><div class="bar"><i id="bar"></i></div><p id="announcement" class="sr-only" role="status" aria-live="polite"></p>
  <input id="label" maxlength="80" placeholder="What are you working on?" aria-label="Session label">
  <div class="row"><button id="go" class="primary" type="button">&gt; start_</button><button id="reset" type="button">Reset</button><button id="skip" type="button">Skip</button></div>
  <p id="today" class="mut" aria-live="polite"></p>
@@ -42,8 +43,19 @@ try {
   <textarea id="nb" placeholder="Markdown works. - [ ] makes a checklist." aria-label="Note"></textarea><div id="npv" hidden></div><div id="subbox"></div></div>
  <p id="nempty" class="mut">Pick a note or press <b>+ New</b>.</p></div></section>
 <section id="v-stats" hidden><p class="eyebrow">04 — Stats</p><div id="cards" class="cards"></div>
- <h2 class="small mut">Last 14 days (minutes focused)</h2><div id="chart" class="chart" role="img" aria-label="Focus minutes for the last 14 days"></div><ul id="chart-data" class="sr-only"></ul><h2 class="small mut">By label</h2><ul id="labels" class="list"></ul></section>
+ <h2 class="small mut">Last 14 days (minutes focused)</h2><div id="chart" class="chart" role="img" aria-label="Focus minutes for the last 14 days"></div> <table id="chart-data" class="sr-only"><caption>Focus minutes for the last 14 days</caption><tbody></tbody></table><h2 class="small mut">By label</h2><ul id="labels" class="list"></ul></section>
 </main>
 <dialog id="pal"><input id="pi" placeholder="Type a command" aria-label="Command"><ul id="pl" role="listbox"></ul></dialog>
+<dialog id="settings-dialog" class="sheet" aria-labelledby="settings-title"><form method="dialog"><button class="dialog-close" aria-label="Close settings">×</button></form>
+ <h2 id="settings-title">Settings</h2><label>Theme<select id="theme-choice"><option value="auto">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+ <p id="settings-backup" class="mut small"></p><div class="row"><button id="settings-export" type="button">Export data</button><button id="settings-import" type="button">Import data</button></div></dialog>
+<dialog id="task-dialog" class="sheet" aria-labelledby="task-dialog-title"><form method="dialog"><button class="dialog-close" aria-label="Close task details">×</button></form>
+ <h2 id="task-dialog-title">Task details</h2><form id="task-details">
+  <label>Due date<input id="detail-due" type="date"></label><label>Priority<select id="detail-pri"><option value="0">None</option><option value="1">High</option><option value="2">Medium</option><option value="3">Low</option></select></label>
+  <label>List<input id="detail-list" maxlength="80"></label><label>Estimated sessions<input id="detail-est" type="number" min="0" max="20"></label>
+  <div class="row"><button type="submit" class="primary">Save</button><button id="task-cancel" type="button">Cancel</button></div></form></dialog>
+<dialog id="help-dialog" class="sheet" aria-labelledby="help-title"><form method="dialog"><button class="dialog-close" aria-label="Close shortcuts">×</button></form>
+ <h2 id="help-title">Keyboard shortcuts</h2><ul><li><kbd>Ctrl/Cmd + K</kbd> Command palette</li><li><kbd>Space</kbd> Start/pause focus timer</li><li><kbd>1–4</kbd> Switch views</li><li><kbd>?</kbd> Show this guide</li><li><kbd>Ctrl/Cmd + E</kbd> Toggle note preview</li></ul></dialog>
+<nav id="bottom-nav" aria-label="Main tabs"><button data-v="focus">Focus</button><button data-v="tasks">Tasks</button><button data-v="notes">Notes</button><button data-v="stats">Stats</button><button id="mobile-settings">Settings</button></nav>
 <div id="toast" role="status" hidden></div>
 <script type="module" src="app.js"></script></body></html>
