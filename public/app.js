@@ -2,7 +2,7 @@ import { $, uid, day, addDays, state as S, save, flush, ready, parseTask, md, no
 import { initTimer } from "./timer.js";
 import { initTasks } from "./tasks.js";
 import { initNotes } from "./notes.js";
-import { renderStats as renderStatsView } from "./stats.js";
+import { initStats } from "./stats.js";
 import { initPalette } from "./palette.js";
 import { initStorage } from "./storage.js";
 
@@ -26,11 +26,12 @@ const toast = (message, action, actionLabel = "Undo", duration = action ? 5000 :
   element.hidden = false; clearTimeout(toast.timer);
   if (duration) toast.timer = setTimeout(() => (element.hidden = true), duration);
 };
-const renderStats = () => renderStatsView({ S, day, addDays });
-const timer = initTimer({ S, T, C, day, save, toast, getView: () => view, renderStats });
-const tasks = initTasks({ S, T, go, toast, save, uid, day, addDays, parseTask });
 const notes = initNotes({ S, uid, toast, save, md, MAX_SUB });
+const tasks = initTasks({ S, T, go, toast, save, uid, day, addDays, parseTask });
+const stats = initStats({ S, day, addDays, save, toast });
+const renderStats = stats.renderStats;
 const renderers = { tasks: tasks.renderTasks, notes: notes.renderNotes, stats: renderStats };
+const timer = initTimer({ S, T, C, day, save, toast, getView: () => view, renderStats, renderNotes: notes.renderNotes });
 function go(target) {
   view = views.includes(target) ? target : "focus";
   for (const section of views) $("#v-" + section).hidden = section !== view;

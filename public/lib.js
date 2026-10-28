@@ -3,23 +3,48 @@ export const $ = (s) => document.querySelector(s);
 export const uid = () => crypto.randomUUID().slice(0, 8);
 export const day = (d = new Date()) => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
 export const addDays = (iso, n) => { const d = new Date(iso + "T12:00"); d.setDate(d.getDate() + n); return day(d); };
+export function nextRecurringDate(task, today = day()) {
+  const base = task.due && task.due > today ? task.due : today;
+  if (task.repeat === "daily") return addDays(base, 1);
+  if (task.repeat === "weekdays") {
+    let date = addDays(base, 1);
+    while ([0, 6].includes(new Date(date + "T12:00:00").getDay())) date = addDays(date, 1);
+    return date;
+  }
+  if (task.repeat === "weekly") {
+    if (!Number.isInteger(task.repeatDay)) return addDays(base, 7);
+    const current = new Date(base + "T12:00:00").getDay();
+    return addDays(base, (task.repeatDay - current + 7) % 7 || 7);
+  }
+  if (task.repeat === "monthly") {
+    const date = new Date(base + "T12:00:00");
+    const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1, 12);
+    const lastDay = new Date(nextMonth.getFullYear(), nextMonth.getMonth() + 1, 0).getDate();
+    nextMonth.setDate(Math.min(date.getDate(), lastDay));
+    return day(nextMonth);
+  }
+  return null;
+}
 export const fmt = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); };
 export const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// ---- store: one JSON blob in localStorage, debounced writes, flushed on page hide
+// ---- store: one JSON blob in IndexedDB (localStorage fallback), debounced writes, flushed on page hide
 const KEY = "pomonote.v2";
-const VERSION = 1, BACKUPS = KEY + ".backups", SYNC = KEY + ".sync", CORRUPT = KEY + ".corrupt";
+const VERSION = 2, BACKUPS = KEY + ".backups", SYNC = KEY + ".sync", CORRUPT = KEY + ".corrupt";
 const DEF = { version: VERSION, onboarded: false, tasks: [], notes: [], sessions: [],
-  cfg: { focus: 25, short: 5, long: 15, every: 4, auto: false, sound: true, theme: "auto" },
-  timer: { mode: "focus", running: false, endAt: 0, left: 25 * 60000, len: 25 * 60000, label: "", task: null } };
+  cfg: { focus: 25, short: 5, long: 15, every: 4, auto: false, sound: true, soundType: "beep", volume: 50, theme: "auto" },
+  timer: { mode: "focus", running: false, endAt: 0, left: 25 * 60000, len: 25 * 60000, label: "", task: null, noteId: null } };
 const clone = (x) => structuredClone(x);
 export function migrate(data) {
   const saved = data && typeof data === "object" && !Array.isArray(data) ? data : {};
   const hasExistingData = ["tasks", "notes", "sessions"].some((key) => Array.isArray(saved[key]) && saved[key].length > 0);
+  const tasks = Array.isArray(saved.tasks) ? saved.tasks.map((task) => task && typeof task === "object" && !Array.isArray(task)
+    ? { ...task, repeat: task.repeat ?? null, repeatDay: Number.isInteger(task.repeatDay) ? task.repeatDay : null, noteId: task.noteId ?? null, recurrenceFrom: task.recurrenceFrom ?? null }
+    : task) : [];
   return {
     ...DEF, ...saved, version: VERSION,
     onboarded: saved.onboarded ?? hasExistingData,
-    tasks: Array.isArray(saved.tasks) ? saved.tasks : [],
+    tasks,
     notes: Array.isArray(saved.notes) ? saved.notes : [],
     sessions: Array.isArray(saved.sessions) ? saved.sessions : [],
     cfg: { ...DEF.cfg, ...saved.cfg },
@@ -33,11 +58,16 @@ export function validateImport(data) {
     && (x.due === null || typeof x.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(x.due))
     && Number.isInteger(x.pri) && x.pri >= 0 && x.pri <= 3
     && Number.isInteger(x.est) && x.est >= 0 && Number.isInteger(x.spent) && x.spent >= 0
-    && typeof x.list === "string";
+    && typeof x.list === "string"
+    && (x.repeat === undefined || x.repeat === null || ["daily", "weekdays", "weekly", "monthly"].includes(x.repeat))
+    && (x.repeatDay === undefined || x.repeatDay === null || Number.isInteger(x.repeatDay) && x.repeatDay >= 0 && x.repeatDay <= 6)
+    && (x.noteId === undefined || x.noteId === null || typeof x.noteId === "string")
+    && (x.recurrenceFrom === undefined || x.recurrenceFrom === null || typeof x.recurrenceFrom === "string");
   const note = (x) => x && typeof x.id === "string" && typeof x.title === "string" && typeof x.body === "string";
   const session = (x) => x && Number.isFinite(x.t) && Number.isFinite(x.min)
     && (x.label === undefined || typeof x.label === "string")
-    && (x.task === undefined || x.task === null || typeof x.task === "string");
+    && (x.task === undefined || x.task === null || typeof x.task === "string")
+    && (x.noteId === undefined || x.noteId === null || typeof x.noteId === "string");
   const tasks = data.tasks.filter(task), notes = data.notes.filter(note);
   const sessions = (data.sessions || []).filter(session);
   return { tasks, notes, sessions, skipped: data.tasks.length - tasks.length + data.notes.length - notes.length + (data.sessions || []).length - sessions.length };
@@ -107,7 +137,9 @@ export const ready = (async () => {
       raw = JSON.stringify(state);
     }
   }
-  assignState(state, migrate(await parseSaved(raw)));
+  const original = await parseSaved(raw);
+  assignState(state, migrate(original));
+  if (raw !== null && original?.version !== VERSION) await setRaw(KEY, JSON.stringify(state));
   try { if (localGet("pomonote.theme") === null) localSet("pomonote.theme", state.cfg.theme); }
   catch { setTimeout(() => report("pn:error", "Theme preference will sync after startup."), 0); }
   const backups = await getRaw(BACKUPS);
@@ -159,12 +191,25 @@ export const save = () => { clearTimeout(t); t = setTimeout(() => flush().catch(
 if (typeof addEventListener === "function") addEventListener("pagehide", () => { flush().catch((error) => report("pn:error", error.message)); });
 
 // ---- quick-add: "Review draft tomorrow #work !1 ~3"
-const WORDS = "today|tomorrow|tmr|sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?";
+const WEEKDAYS = "sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?";
+const WORDS = "today|tomorrow|tmr|" + WEEKDAYS;
 const TOKEN = new RegExp(`(^|\\s)(#(\\w+)|!([1-3])|~(\\d+)|(next\\s+week)|in\\s+(\\d+)\\s+days?|(${WORDS}))([.,!?;:]?)(?=\\s|$)`, "gi");
+const REPEAT = new RegExp(`(^|\\s)every\\s+(day|daily|weekdays?|weekly|weeks?|months?|monthly|${WEEKDAYS})([.,!?;:]?)(?=\\s|$)`, "i");
 export function parseTask(raw) {
-  const t = { pri: 0, due: null, list: "Inbox", est: 0 };
-  const hasTitle = /[\p{L}\p{N}]/u.test(raw.replace(TOKEN, " "));
-  const title = raw.replace(TOKEN, (_m, sp, _tok, list, pri, est, nextWeek, inDays, w) => {
+  const t = { pri: 0, due: null, list: "Inbox", est: 0, repeat: null, repeatDay: null };
+  const repeat = raw.match(REPEAT), source = repeat ? raw.replace(repeat[0], repeat[1]) : raw;
+  if (repeat) {
+    const word = repeat[2].toLowerCase();
+    if (/^(?:day|daily)$/.test(word)) t.repeat = "daily";
+    else if (/^weekdays?$/.test(word)) t.repeat = "weekdays";
+    else if (/^(?:month|months|monthly)$/.test(word)) t.repeat = "monthly";
+    else {
+      t.repeat = "weekly";
+      if (/^(sun|mon|tue|wed|thu|fri|sat)/.test(word)) t.repeatDay = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].indexOf(word.slice(0, 3));
+    }
+  }
+  const hasTitle = /[\p{L}\p{N}]/u.test(source.replace(TOKEN, " "));
+  const title = source.replace(TOKEN, (_m, sp, _tok, list, pri, est, nextWeek, inDays, w) => {
     if (list) t.list = list; else if (pri) t.pri = +pri; else if (est) t.est = Math.min(20, +est);
     else { const now = day();
       if (nextWeek) { const have = new Date(now + "T12:00").getDay(); t.due = addDays(now, (1 - have + 7) % 7 || 7); }

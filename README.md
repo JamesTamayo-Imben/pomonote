@@ -26,12 +26,15 @@ Most productivity tools want an account, a subscription and your data. pomonote 
 - Timestamp-based timer: keeps correct time through reloads, sleeping tabs and throttling
 - Focus, short break and long break modes with configurable lengths and long-break interval
 - Session labels, optional auto-start, sound and desktop notifications
+- Progress ring, sound type and volume controls, +5 minutes, and early session logging
 - Live countdown in the browser tab title
 
 ### 02 — Tasks
 - Natural-language quick-add: `Review draft tomorrow #work !1 ~3`
 - Views: Today, Next 7 days, No date, All, Done
 - Priorities, lists, due dates and estimated sessions
+- Daily, weekday, weekly and monthly recurrence; completion creates the next task
+- Link tasks to notes and see focused minutes alongside each
 - Press ▶ on any task to start a focus session on it; completed sessions count against the estimate
 
 ### 03 — Notes
@@ -41,8 +44,8 @@ Most productivity tools want an account, a subscription and your data. pomonote 
 - Safe Markdown preview: headings, lists, `- [ ]` checklists, code blocks, quotes, links
 
 ### 04 — Stats
-- Today, last 7 days, streak and tasks completed
-- 14-day focus chart and a per-label breakdown
+- Week/month summaries, a 12-week heatmap, best focus hour and per-label breakdown
+- Edit or delete individual focus sessions
 
 ### Everything else
 - Command palette (`Ctrl/Cmd + K`), light and dark themes
@@ -70,9 +73,11 @@ There is nothing to install: `server.js` is a zero-dependency static server. You
 | `today`, `tomorrow`, `mon` … `sun` | Due date; weekdays are upcoming dates | `friday` |
 | `next week` | Due next Monday | `next week` |
 | `in N days` | Due in N days | `in 3 days` |
+| `every day` / `every weekdays` / `every week` / `every month` | Recurring task rule | `Review notes every mon` |
 
 `Write report friday #work !2 ~4` creates "Write report", due next Friday, in the work list, priority 2, estimated at 4 sessions.
 Trailing punctuation after a token is allowed (for example, `#work,`); a weekday entered alone stays the task title.
+Open a task's details to set its recurrence, weekly day, or linked note.
 
 ## Keyboard shortcuts
 

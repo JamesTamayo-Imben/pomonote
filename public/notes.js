@@ -7,6 +7,10 @@ export function initNotes({ S, uid, toast, save, md, MAX_SUB }) {
   const note = () => byId(current);
   const kids = (parent) => S.notes.filter((n) => n.parent === parent);
   const words = (n) => (n.body.trim() ? n.body.trim().split(/\s+/).length : 0);
+  const focusMinutes = (id) => {
+    const taskIds = new Set(S.tasks.filter((task) => task.noteId === id).map((task) => task.id));
+    return S.sessions.filter((session) => session.noteId === id || taskIds.has(session.task)).reduce((sum, session) => sum + session.min, 0);
+  };
   const swap = (el) => { el.classList.remove("swap"); void el.offsetWidth; el.classList.add("swap"); };
   function renderNotes() {
     const query = $("#ns").value.trim().toLowerCase();
@@ -21,6 +25,7 @@ export function initNotes({ S, uid, toast, save, md, MAX_SUB }) {
     $("#ntree").innerHTML = list.map((n) => (query ? `<li>${row(n)}</li>` : root(n))).join("") || `<li class="mut pad">${query ? "No matches." : "No notes yet."}</li>`;
     const selected = note(); $("#ned").hidden = !selected; $("#nempty").hidden = !!selected;
     if (!selected) return;
+    $("#nstat").textContent = `${words(selected)} words · ${Math.round(focusMinutes(selected.id))} min focused`;
     const parent = byId(selected.parent), children = kids(selected.id), full = children.length >= MAX_SUB;
     $("#npin").textContent = selected.pinned ? "Unpin" : "Pin";
     $("#nsub").disabled = !!parent || full;
@@ -52,7 +57,7 @@ export function initNotes({ S, uid, toast, save, md, MAX_SUB }) {
     const selected = note(); if (!selected) return;
     const titleChanged = selected.title !== $("#nt").value;
     selected.title = $("#nt").value; selected.body = $("#nb").value; selected.updated = Date.now(); save();
-    $("#nstat").textContent = `${words(selected)} words · saved`;
+    $("#nstat").textContent = `${words(selected)} words · saved · ${Math.round(focusMinutes(selected.id))} min focused`;
     if (titleChanged) renderNotes();
   }
   $("#nt").oninput = edit; $("#nb").oninput = edit; $("#ns").oninput = renderNotes;
@@ -81,7 +86,10 @@ export function initNotes({ S, uid, toast, save, md, MAX_SUB }) {
     const selected = note(); if (!selected) return;
     const ids = new Set([selected.id, ...kids(selected.id).map((k) => k.id)]);
     if (!confirm(`Delete "${selected.title || "Untitled"}"${ids.size > 1 ? ` and ${ids.size - 1} sub-note(s)` : ""}? This cannot be undone.`)) return;
-    S.notes = S.notes.filter((x) => !ids.has(x.id)); save(); current = null;
+    S.notes = S.notes.filter((x) => !ids.has(x.id));
+    for (const task of S.tasks) if (ids.has(task.noteId)) task.noteId = null;
+    for (const session of S.sessions) if (ids.has(session.noteId)) session.noteId = null;
+    save(); current = null;
     selected.parent ? openNote(selected.parent) : renderNotes();
   };
   return {

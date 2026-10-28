@@ -20,6 +20,8 @@ export function initStorage({ S, getLastBackup, normalizeNotes, applyTheme, getV
       $("#label").value = S.timer.label;
       for (const key of ["focus", "short", "long", "every"]) $("#c-" + key).value = S.cfg[key];
       for (const key of ["auto", "sound"]) $("#c-" + key).checked = S.cfg[key];
+      $("#c-sound-type").value = S.cfg.soundType;
+      $("#c-volume").value = S.cfg.volume;
       $("#theme-choice").value = S.cfg.theme;
       const selected = getView() === "notes" && S.notes.find((n) => n.id === notes.getCurrent());
       if (getView() === "notes" && selected && !editingNote) {
