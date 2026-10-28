@@ -1,6 +1,6 @@
 // Stale-while-revalidate: serve cached content immediately and refresh it online.
 const V = "pn-v4";
-addEventListener("install", (e) => e.waitUntil(caches.open(V).then((c) => c.addAll(["./", "./style.css", "./app.js", "./lib.js", "./icon.svg", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"]))));
+addEventListener("install", (e) => e.waitUntil(caches.open(V).then((c) => c.addAll(["./", "./style.css", "./app.js", "./lib.js", "./timer.js", "./tasks.js", "./notes.js", "./stats.js", "./palette.js", "./storage.js", "./icon.svg", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"]))));
 addEventListener("activate", (e) => e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== V).map((x) => caches.delete(x)))).then(() => clients.claim())));
 addEventListener("message", (e) => { if (e.data?.type === "SKIP_WAITING") skipWaiting(); });
 addEventListener("fetch", (e) => {

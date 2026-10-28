@@ -95,7 +95,7 @@ Open the site over HTTPS (or `localhost`), then use the **Install** button in th
 
 ## Your data
 
-Everything is stored in your browser's `localStorage` on your device. Nothing is sent anywhere.
+Everything is stored on your device in IndexedDB when available, with `localStorage` as a fallback. Existing `localStorage` data migrates automatically. Nothing is sent anywhere.
 
 - Data is per browser and per web address. Clearing site data erases it.
 - Use **Export** (command palette) to back up, and **Import** to restore or move devices.
@@ -119,8 +119,14 @@ pomonote/
 └─ public/
    ├─ index.html              Markup
    ├─ style.css               Design tokens, layout, motion
-   ├─ lib.js                  Store, quick-add parser, Markdown renderer
-   ├─ app.js                  UI, timer, tasks, notes, stats, command palette
+   ├─ lib.js                  Storage, quick-add parser, Markdown renderer
+   ├─ app.js                  App shell and module wiring
+   ├─ timer.js                Focus timer and session completion
+   ├─ tasks.js                Task list and task details
+   ├─ notes.js                Notes editor and Markdown preview
+   ├─ stats.js                Focus summaries and chart
+   ├─ palette.js              Command palette, import/export, install
+   ├─ storage.js              Multi-tab state synchronization
    ├─ sw.js                   Offline cache (service worker)
    ├─ manifest.webmanifest    Install metadata
    └─ icon*.png / icon.svg    App icons
